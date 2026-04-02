@@ -162,8 +162,26 @@ def _tool_desc(name: str, inputs: dict) -> str:
     if name == "Bash":   return f"Bash({inputs.get('command','')[:80]})"
     if name == "Glob":   return f"Glob({inputs.get('pattern','')})"
     if name == "Grep":   return f"Grep({inputs.get('pattern','')})"
-    if name == "WebFetch":  return f"WebFetch({inputs.get('url','')[:60]})"
-    if name == "WebSearch": return f"WebSearch({inputs.get('query','')})"
+    if name == "WebFetch":    return f"WebFetch({inputs.get('url','')[:60]})"
+    if name == "WebSearch":   return f"WebSearch({inputs.get('query','')})"
+    if name == "Agent":
+        atype = inputs.get("subagent_type", "")
+        aname = inputs.get("name", "")
+        iso   = inputs.get("isolation", "")
+        bg    = not inputs.get("wait", True)
+        parts = []
+        if atype:  parts.append(atype)
+        if aname:  parts.append(f"name={aname}")
+        if iso:    parts.append(f"isolation={iso}")
+        if bg:     parts.append("background")
+        suffix = f"({', '.join(parts)})" if parts else ""
+        prompt_short = inputs.get("prompt", "")[:60]
+        return f"Agent{suffix}: {prompt_short}"
+    if name == "SendMessage":
+        return f"SendMessage(to={inputs.get('to','')}: {inputs.get('message','')[:50]})"
+    if name == "CheckAgentResult": return f"CheckAgentResult({inputs.get('task_id','')})"
+    if name == "ListAgentTasks":   return "ListAgentTasks()"
+    if name == "ListAgentTypes":   return "ListAgentTypes()"
     return f"{name}({list(inputs.values())[:1]})"
 
 
@@ -383,51 +401,98 @@ def cmd_exit(_args: str, _state, _config) -> bool:
     sys.exit(0)
 
 def cmd_memory(args: str, _state, _config) -> bool:
-    from memory import load_index, search_memory
-    if args:
-        results = search_memory(args)
+    from memory import search_memory, load_index
+    from memory.scan import scan_all_memories, format_memory_manifest, memory_freshness_text
+
+    if args.strip():
+        results = search_memory(args.strip())
         if not results:
-            info(f"No memories matching '{args}'")
+            info(f"No memories matching '{args.strip()}'")
             return True
+        info(f"  {len(results)} result(s) for '{args.strip()}':")
         for m in results:
-            info(f"  [{m.type}] {m.name}: {m.description}")
-            info(f"    {m.content[:100]}{'...' if len(m.content) > 100 else ''}")
+            info(f"  [{m.type:9s}|{m.scope:7s}] {m.name}: {m.description}")
+            info(f"    {m.content[:120]}{'...' if len(m.content) > 120 else ''}")
         return True
-    entries = load_index()
-    if not entries:
-        info("No memories stored. The model can save memories via MemorySave tool.")
+
+    # Show manifest with age/freshness
+    headers = scan_all_memories()
+    if not headers:
+        info("No memories stored. The model saves memories via MemorySave.")
         return True
-    info(f"  {len(entries)} memories:")
-    for m in entries:
-        info(f"  [{m.type:9s}] {m.name}: {m.description}")
+    info(f"  {len(headers)} memory/memories (newest first):")
+    for h in headers:
+        fresh_warn = "  ⚠ stale" if memory_freshness_text(h.mtime_s) else ""
+        tag = f"[{h.type or '?':9s}|{h.scope:7s}]"
+        info(f"  {tag} {h.filename}{fresh_warn}")
+        if h.description:
+            info(f"    {h.description}")
     return True
 
 def cmd_agents(_args: str, _state, _config) -> bool:
     try:
-        from tools import _get_agent_manager
-        mgr = _get_agent_manager()
+        from multi_agent.tools import get_agent_manager
+        mgr = get_agent_manager()
         tasks = mgr.list_tasks()
         if not tasks:
             info("No sub-agent tasks.")
             return True
-        info(f"  {len(tasks)} sub-agent tasks:")
+        info(f"  {len(tasks)} sub-agent task(s):")
         for t in tasks:
-            preview = t.prompt[:40] + ("..." if len(t.prompt) > 40 else "")
-            info(f"  {t.id} [{t.status:9s}] {preview}")
+            preview = t.prompt[:50] + ("..." if len(t.prompt) > 50 else "")
+            wt_info = f"  branch:{t.worktree_branch}" if t.worktree_branch else ""
+            info(f"  {t.id} [{t.status:9s}] name={t.name}{wt_info}  {preview}")
     except Exception:
         info("Sub-agent system not initialized.")
     return True
 
+
+def _print_background_notifications():
+    """Print notifications for newly completed background agent tasks.
+
+    Called before each user prompt so the user sees results without polling.
+    """
+    try:
+        from multi_agent.tools import get_agent_manager
+        mgr = get_agent_manager()
+    except Exception:
+        return
+
+    notified_key = "_notified"
+    if not hasattr(_print_background_notifications, "_seen"):
+        _print_background_notifications._seen = set()
+
+    for task in mgr.list_tasks():
+        if task.id in _print_background_notifications._seen:
+            continue
+        if task.status in ("completed", "failed", "cancelled"):
+            _print_background_notifications._seen.add(task.id)
+            icon = "✓" if task.status == "completed" else "✗"
+            color = "green" if task.status == "completed" else "red"
+            branch_info = f" [branch: {task.worktree_branch}]" if task.worktree_branch else ""
+            print(clr(
+                f"\n  {icon} Background agent '{task.name}' {task.status}{branch_info}",
+                color, "bold"
+            ))
+            if task.result:
+                preview = task.result[:200] + ("..." if len(task.result) > 200 else "")
+                print(clr(f"    {preview}", "dim"))
+            print()
+
 def cmd_skills(_args: str, _state, _config) -> bool:
-    from skills import load_skills
+    from skill import load_skills
     skills = load_skills()
     if not skills:
         info("No skills found.")
-    else:
-        info(f"Loaded skills ({len(skills)}):")
-        for s in skills:
-            triggers = ", ".join(s.triggers)
-            info(f"  {s.name:16s} {s.description}  [{triggers}]")
+        return True
+    info(f"Available skills ({len(skills)}):")
+    for s in skills:
+        triggers = ", ".join(s.triggers)
+        source_label = f"[{s.source}]" if s.source != "builtin" else ""
+        hint = f"  args: {s.argument_hint}" if s.argument_hint else ""
+        print(f"  {clr(s.name, 'cyan'):24s} {s.description}  {clr(triggers, 'dim')}{hint} {clr(source_label, 'yellow')}")
+        if s.when_to_use:
+            print(f"    {clr(s.when_to_use[:80], 'dim')}")
     return True
 
 COMMANDS = {
@@ -467,12 +532,12 @@ def handle_slash(line: str, state, config) -> Union[bool, tuple]:
         return True
 
     # Fall through to skill lookup
-    from skills import find_skill
+    from skill import find_skill
     skill = find_skill(line)
     if skill:
         cmd_parts = line.strip().split(maxsplit=1)
-        args = cmd_parts[1] if len(cmd_parts) > 1 else ""
-        return (skill, args)
+        skill_args = cmd_parts[1] if len(cmd_parts) > 1 else ""
+        return (skill, skill_args)
 
     err(f"Unknown command: /{cmd}  (type /help for commands)")
     return True
@@ -580,6 +645,8 @@ def repl(config: dict, initial_prompt: str = None):
         return
 
     while True:
+        # Show notifications for background agents that finished
+        _print_background_notifications()
         try:
             cwd_short = Path.cwd().name
             prompt = clr(f"\n[{cwd_short}] ", "dim") + clr("❯ ", "cyan", "bold")
@@ -594,10 +661,12 @@ def repl(config: dict, initial_prompt: str = None):
 
         result = handle_slash(user_input, state, config)
         if isinstance(result, tuple):
-            skill, args = result
-            info(f"Running skill: {skill.name}")
+            skill, skill_args = result
+            info(f"Running skill: {skill.name}" + (f" [{skill.context}]" if skill.context == "fork" else ""))
             try:
-                run_query(f"[Skill: {skill.name}]\n\n{skill.prompt}\n\nUser context: {args}")
+                from skill import substitute_arguments
+                rendered = substitute_arguments(skill.prompt, skill_args, skill.arguments)
+                run_query(f"[Skill: {skill.name}]\n\n{rendered}")
             except KeyboardInterrupt:
                 print(clr("\n  (interrupted)", "yellow"))
             continue

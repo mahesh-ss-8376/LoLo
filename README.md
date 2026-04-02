@@ -24,6 +24,7 @@
 ---
 
 ## 🔥🔥🔥 News (Pacific Time)
+- 12:20 PM, Apr 02, 2026: **v3.0** — Multi-agent packages (`multi_agent/`), memory package (`memory/`), skill package (`skill/`) with built-in skills, argument substitution, fork/inline execution, AI memory search, git worktree isolation, agent type definitions (**~5000** lines of Python)
 - 10:00 AM, Apr 02, 2026: **v2.0** — Context compression, memory, sub-agents, skills, diff view, tool plugin system (**~3400** lines of Python Code)
 - 01:47 PM, Apr 01, 2026: Support VLLM inference (**~2000** lines of Python Code)
 - 11:30 AM, Apr 01, 2026: Support more **closed-source** models and **open-source models**: Claude, GPT, Gemini, Kimi, Qwen, Zhipu, DeepSeek, and local open-source models via Ollama or any OpenAI-compatible endpoint. (**~1700** lines of Python Code)
@@ -70,16 +71,16 @@ A minimal Python implementation of Claude Code in ~900 lines (Initial version), 
 | Multi-provider | Anthropic · OpenAI · Gemini · Kimi · Qwen · Zhipu · DeepSeek · Ollama · LM Studio · Custom endpoint |
 | Interactive REPL | readline history, Tab-complete slash commands |
 | Agent loop | Streaming API + automatic tool-use loop |
-| 13 built-in tools | Read · Write · Edit · Bash · Glob · Grep · WebFetch · WebSearch · MemorySave · MemoryDelete · Agent · CheckAgentResult · ListAgentTasks |
+| 18 built-in tools | Read · Write · Edit · Bash · Glob · Grep · WebFetch · WebSearch · MemorySave · MemoryDelete · MemorySearch · MemoryList · Agent · SendMessage · CheckAgentResult · ListAgentTasks · ListAgentTypes · Skill · SkillList |
 | Diff view | Git-style red/green diff display for Edit and Write |
 | Context compression | Auto-compact long conversations to stay within model limits |
-| Persistent memory | File-based memory system that survives across sessions |
-| Sub-agents | Spawn background agents for parallel task execution |
-| Skills | Reusable prompt templates loaded from markdown files |
+| Persistent memory | Dual-scope memory (user + project) with 4 types, AI search, staleness warnings |
+| Multi-agent | Spawn typed sub-agents (coder/reviewer/researcher/…), git worktree isolation, background mode |
+| Skills | Built-in `/commit` · `/review` + custom markdown skills with argument substitution and fork/inline execution |
 | Plugin tools | Register custom tools via `tool_registry.py` |
 | Permission system | `auto` / `accept-all` / `manual` modes |
 | 17 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · … |
-| Context injection | Auto-loads `CLAUDE.md`, git status, cwd, memory |
+| Context injection | Auto-loads `CLAUDE.md`, git status, cwd, persistent memory |
 | Session persistence | Save / load conversations to `~/.nano_claude/sessions/` |
 | Extended Thinking | Toggle on/off (Claude models only) |
 | Cost tracking | Token usage + estimated USD cost |
@@ -178,6 +179,7 @@ export OPENAI_API_KEY=sk-...
 
 python nano_claude.py --model gpt-4o
 python nano_claude.py --model gpt-4o-mini
+python nano_claude.py --model gpt-4.1-mini
 python nano_claude.py --model o3-mini
 ```
 
@@ -599,16 +601,27 @@ Keys are saved to `~/.nano_claude/config.json` and loaded automatically on next 
 
 | Tool | Description | Key Parameters |
 |---|---|---|
-| `MemorySave` | Save a persistent memory | `name`, `type`, `description`, `content` |
-| `MemoryDelete` | Delete a memory by name | `name` |
+| `MemorySave` | Save or update a persistent memory | `name`, `type`, `description`, `content`, `scope` |
+| `MemoryDelete` | Delete a memory by name | `name`, `scope` |
+| `MemorySearch` | Search memories by keyword (or AI ranking) | `query`, `scope`, `use_ai`, `max_results` |
+| `MemoryList` | List all memories with age and metadata | `scope` |
 
 ### Sub-Agent Tools
 
 | Tool | Description | Key Parameters |
 |---|---|---|
-| `Agent` | Spawn a sub-agent for a task | `prompt`, `model` (optional), `wait` (default: true) |
-| `CheckAgentResult` | Check status of a background sub-agent | `task_id` |
-| `ListAgentTasks` | List all sub-agent tasks | — |
+| `Agent` | Spawn a sub-agent for a task | `prompt`, `subagent_type`, `isolation`, `name`, `model`, `wait` |
+| `SendMessage` | Send a message to a named background agent | `name`, `message` |
+| `CheckAgentResult` | Check status/result of a background agent | `task_id` |
+| `ListAgentTasks` | List all active and finished agent tasks | — |
+| `ListAgentTypes` | List available agent type definitions | — |
+
+### Skill Tools
+
+| Tool | Description | Key Parameters |
+|---|---|---|
+| `Skill` | Invoke a skill by name from within the conversation | `name`, `args` |
+| `SkillList` | List all available skills with triggers and metadata | — |
 
 > **Adding custom tools:** See [Architecture Guide](docs/architecture.md#tool-registry) for how to register your own tools.
 
@@ -618,7 +631,11 @@ Keys are saved to `~/.nano_claude/config.json` and loaded automatically on next 
 
 The model can remember things across conversations using the built-in memory system.
 
-**How it works:** Memories are saved as markdown files in `~/.nano_claude/memory/`. The model sees a summary of all memories in its system prompt and can read, save, or delete them using tools.
+**How it works:** Memories are stored as markdown files. There are two scopes:
+- **User scope** (`~/.nano_claude/memory/`) — follows you across all projects
+- **Project scope** (`.nano_claude/memory/` in cwd) — specific to the current repo
+
+A `MEMORY.md` index (≤ 200 lines / 25 KB) is auto-rebuilt on every save or delete and injected into the system prompt so Claude always has an overview.
 
 **Memory types:**
 
@@ -629,59 +646,97 @@ The model can remember things across conversations using the built-in memory sys
 | `project` | Ongoing work, deadlines, decisions |
 | `reference` | Links to external resources |
 
+**Memory file format** (`~/.nano_claude/memory/coding_style.md`):
+```markdown
+---
+name: coding style
+description: Python formatting preferences
+type: feedback
+created: 2026-04-02
+---
+Prefer 4-space indentation and full type hints in all Python code.
+**Why:** user explicitly stated this preference.
+**How to apply:** apply to every Python file written or edited.
+```
+
 **Example interaction:**
 
 ```
 You: Remember that I prefer 4-space indentation and type hints in all Python code.
-AI: [calls MemorySave] Memory saved: coding_style
+AI: [calls MemorySave] Memory saved: coding_style [feedback/user]
 
 You: /memory
-  [feedback ] coding_style: Prefers 4-space indent and type hints
+  [feedback/user] coding_style (today): Python formatting preferences
 
 You: /memory python
-  [feedback ] coding_style: Prefers 4-space indent and type hints in Python
+  [feedback/user] coding_style: Prefers 4-space indent and type hints in Python
 ```
+
+**Staleness warnings:** Memories older than 1 day get a freshness note in `/memory` output so you know when to review or update them.
+
+**AI-ranked search:** `MemorySearch(query="...", use_ai=true)` uses the model to rank results by relevance rather than simple keyword matching.
 
 ---
 
 ## Skills
 
-Skills are reusable prompt templates that give the model specialized capabilities.
+Skills are reusable prompt templates that give the model specialized capabilities. Two built-in skills ship out of the box — no setup required.
 
-**Quick start:**
+**Built-in skills:**
+
+| Trigger | Description |
+|---|---|
+| `/commit` | Review staged changes and create a well-structured git commit |
+| `/review [PR]` | Review code or PR diff with structured feedback |
+
+**Quick start — custom skill:**
 
 ```bash
 mkdir -p ~/.nano_claude/skills
 ```
 
-Create `~/.nano_claude/skills/commit.md`:
+Create `~/.nano_claude/skills/deploy.md`:
 
 ```markdown
 ---
-name: commit
-description: Create a git commit with conventional format
-triggers: ["/commit"]
-tools: [Bash, Read]
+name: deploy
+description: Deploy to an environment
+triggers: [/deploy]
+allowed-tools: [Bash, Read]
+when_to_use: Use when the user wants to deploy a version to an environment.
+argument-hint: [env] [version]
+arguments: [env, version]
+context: inline
 ---
 
-Analyze staged changes with `git diff --cached`, then create a
-well-formatted commit message following conventional commits.
-Keep the subject under 72 chars. Use imperative mood.
+Deploy $VERSION to the $ENV environment.
+Full args: $ARGUMENTS
 ```
 
 Now use it:
 
 ```
-You: /commit
-AI: [reads staged changes, creates commit]
+You: /deploy staging 2.1.0
+AI: [deploys version 2.1.0 to staging]
 ```
 
-**List skills:** `/skills`
+**Argument substitution:**
+- `$ARGUMENTS` — the full raw argument string
+- `$ARG_NAME` — positional substitution by named argument (first word → first name)
+- Missing args become empty strings
 
-**Skill search paths** (project-level overrides user-level):
+**Execution modes:**
+- `context: inline` (default) — runs inside current conversation history
+- `context: fork` — runs as an isolated sub-agent with fresh history; supports `model` override
+
+**Priority** (highest wins): project-level > user-level > built-in
+
+**List skills:** `/skills` — shows triggers, argument hint, source, and `when_to_use`
+
+**Skill search paths:**
 
 ```
-./.nano_claude/skills/     # project-level
+./.nano_claude/skills/     # project-level (overrides user-level)
 ~/.nano_claude/skills/     # user-level
 ```
 
@@ -691,19 +746,46 @@ AI: [reads staged changes, creates commit]
 
 The model can spawn independent sub-agents to handle tasks in parallel.
 
+**Specialized agent types** — built-in:
+
+| Type | Optimized for |
+|---|---|
+| `general-purpose` | Research, exploration, multi-step tasks |
+| `coder` | Writing, reading, and modifying code |
+| `reviewer` | Security, correctness, and code quality analysis |
+| `researcher` | Web search and documentation lookup |
+| `tester` | Writing and running tests |
+
+**Basic usage:**
 ```
 You: Search this codebase for all TODO comments and summarize them.
-AI: [calls Agent tool, spawns a sub-agent]
+AI: [calls Agent(prompt="...", subagent_type="researcher")]
     Sub-agent reads files, greps for TODOs...
     Result: Found 12 TODOs across 5 files...
 ```
 
-**Async mode** — the model can spawn background agents and check on them later:
-
+**Background mode** — spawn without waiting, collect result later:
 ```
-AI: [calls Agent(prompt="...", wait=false)]  → task_id: "a1b2c3d4"
-AI: [does other work...]
-AI: [calls CheckAgentResult(task_id="a1b2c3d4")]  → completed
+AI: [calls Agent(prompt="run all tests", name="test-runner", wait=false)]
+AI: [continues other work...]
+AI: [calls CheckAgentResult / SendMessage to follow up]
+```
+
+**Git worktree isolation** — agents work on an isolated branch with no conflicts:
+```
+Agent(prompt="refactor auth module", isolation="worktree")
+```
+The worktree is auto-cleaned up if no changes were made; otherwise the branch name is reported.
+
+**Custom agent types** — create `~/.nano_claude/agents/myagent.md`:
+```markdown
+---
+name: myagent
+description: Specialized for X
+model: claude-haiku-4-5-20251001
+tools: [Read, Grep, Bash]
+---
+Extra system prompt for this agent type.
 ```
 
 **List running agents:** `/agents`
@@ -796,23 +878,48 @@ Sessions are stored as JSON in `~/.nano_claude/sessions/`.
 
 ```
 nano_claude_code/
-├── nano_claude.py     # Entry point: REPL + slash commands + diff rendering      (~620 lines)
-├── agent.py           # Agent loop: tool dispatch + compaction + cancellation     (~175 lines)
-├── providers.py       # Multi-provider: streaming adapters + format conversion    (~500 lines)
-├── tools.py           # 13 tool implementations + registry integration           (~610 lines)
-├── tool_registry.py   # Tool plugin registry: register, lookup, execute          (~100 lines)
-├── compaction.py      # Context compression: snip old results + auto-summarize   (~170 lines)
-├── memory.py          # Persistent memory: markdown files + MEMORY.md index      (~180 lines)
-├── subagent.py        # Sub-agent manager: ThreadPoolExecutor + depth control    (~140 lines)
-├── skills.py          # Skill loader: markdown frontmatter + execute via agent   (~130 lines)
-├── context.py         # System prompt builder: CLAUDE.md + git + memory          (~110 lines)
-├── config.py          # Config load/save/defaults                                 (~75 lines)
-├── tests/             # 78 unit tests
-└── docs/
-    └── architecture.md  # Developer guide: module design + extending
+├── nano_claude.py        # Entry point: REPL + slash commands + diff rendering
+├── agent.py              # Agent loop: streaming, tool dispatch, compaction
+├── providers.py          # Multi-provider: Anthropic, OpenAI-compat streaming
+├── tools.py              # Core tools (Read/Write/Edit/Bash/Glob/Grep/Web) + registry wiring
+├── tool_registry.py      # Tool plugin registry: register, lookup, execute
+├── compaction.py         # Context compression: snip + auto-summarize
+├── context.py            # System prompt builder: CLAUDE.md + git + memory
+├── config.py             # Config load/save/defaults
+│
+├── multi_agent/          # Multi-agent package
+│   ├── __init__.py       # Re-exports
+│   ├── subagent.py       # AgentDefinition, SubAgentManager, worktree helpers
+│   └── tools.py          # Agent, SendMessage, CheckAgentResult, ListAgentTasks, ListAgentTypes
+├── subagent.py           # Backward-compat shim → multi_agent/
+│
+├── memory/               # Memory package
+│   ├── __init__.py       # Re-exports
+│   ├── types.py          # MEMORY_TYPES and format guidance
+│   ├── store.py          # save/load/delete/search, MEMORY.md index rebuilding
+│   ├── scan.py           # MemoryHeader, age/freshness helpers
+│   ├── context.py        # get_memory_context(), truncation, AI search
+│   └── tools.py          # MemorySave, MemoryDelete, MemorySearch, MemoryList
+├── memory.py             # Backward-compat shim → memory/
+│
+├── skill/                # Skill package
+│   ├── __init__.py       # Re-exports; imports builtin to register built-ins
+│   ├── loader.py         # SkillDef, parse, load_skills, find_skill, substitute_arguments
+│   ├── builtin.py        # Built-in skills: /commit, /review
+│   ├── executor.py       # execute_skill(): inline or forked sub-agent
+│   └── tools.py          # Skill, SkillList
+├── skills.py             # Backward-compat shim → skill/
+│
+└── tests/                # 101 unit tests
+    ├── test_memory.py
+    ├── test_skills.py
+    ├── test_subagent.py
+    ├── test_tool_registry.py
+    ├── test_compaction.py
+    └── test_diff_view.py
 ```
 
-> **For developers:** See [docs/architecture.md](docs/architecture.md) for module design details, dependency graph, and how to extend the system.
+> **For developers:** Each feature package (`multi_agent/`, `memory/`, `skill/`) is self-contained. Add custom tools by calling `register_tool(ToolDef(...))` from any module imported by `tools.py`.
 
 ---
 

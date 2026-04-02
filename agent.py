@@ -72,8 +72,8 @@ def run(
     # Append user turn in neutral format
     state.messages.append({"role": "user", "content": user_message})
 
-    # Inject depth into config so Agent tool can access it
-    config = {**config, "_depth": depth}
+    # Inject runtime metadata into config so tools (e.g. Agent) can access it
+    config = {**config, "_depth": depth, "_system_prompt": system_prompt}
 
     while True:
         if cancel_check and cancel_check():
@@ -131,6 +131,7 @@ def run(
                 result = execute_tool(
                     tc["name"], tc["input"],
                     permission_mode="accept-all",  # already gate-checked above
+                    config=config,
                 )
 
             yield ToolEnd(tc["name"], result, permitted)
