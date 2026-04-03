@@ -4,11 +4,17 @@ import re
 import glob as _glob
 import difflib
 import subprocess
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
 from tool_registry import ToolDef, register_tool
 from tool_registry import execute_tool as _registry_execute
+
+# ── AskUserQuestion state ──────────────────────────────────────────────────────
+# The main REPL loop drains _pending_questions and fills _question_answers.
+_pending_questions: list[dict] = []   # [{id, question, options, allow_freetext, event, result_holder}]
+_ask_lock = threading.Lock()
 
 # ── Tool JSON schemas (sent to Claude API) ─────────────────────────────────
 
@@ -123,6 +129,40 @@ TOOL_SCHEMAS = [
                 "query": {"type": "string"},
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "AskUserQuestion",
+        "description": (
+            "Pause execution and ask the user a clarifying question. "
+            "Use this when you need a decision from the user before proceeding. "
+            "Returns the user's answer as a string."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question to ask the user.",
+                },
+                "options": {
+                    "type": "array",
+                    "description": "Optional list of choices. Each item: {label, description}.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label":       {"type": "string"},
+                            "description": {"type": "string"},
+                        },
+                        "required": ["label"],
+                    },
+                },
+                "allow_freetext": {
+                    "type": "boolean",
+                    "description": "If true (default), user may type a free-text answer instead of selecting an option.",
+                },
+            },
+            "required": ["question"],
         },
     },
 ]
@@ -333,6 +373,111 @@ def _websearch(query: str) -> str:
         return f"Error: {e}"
 
 
+# ── AskUserQuestion implementation ────────────────────────────────────────
+
+def _ask_user_question(
+    question: str,
+    options: list[dict] | None = None,
+    allow_freetext: bool = True,
+) -> str:
+    """
+    Block the agent loop and surface a question to the user in the terminal.
+
+    The REPL loop (nano_claude.py) periodically calls drain_pending_questions()
+    to render any questions and collect answers.  We use a threading.Event to
+    block this call until the user responds.
+    """
+    event = threading.Event()
+    result_holder: list[str] = []
+    entry = {
+        "question": question,
+        "options": options or [],
+        "allow_freetext": allow_freetext,
+        "event": event,
+        "result": result_holder,
+    }
+    with _ask_lock:
+        _pending_questions.append(entry)
+
+    # Block until the REPL answers us
+    event.wait(timeout=300)  # 5-minute max wait
+
+    if result_holder:
+        return result_holder[0]
+    return "(no answer — timeout)"
+
+
+def drain_pending_questions() -> bool:
+    """
+    Called by the REPL loop after each streaming turn.
+    Renders pending questions and collects user input.
+    Returns True if any questions were answered.
+    """
+    with _ask_lock:
+        pending = list(_pending_questions)
+        _pending_questions.clear()
+
+    if not pending:
+        return False
+
+    for entry in pending:
+        question = entry["question"]
+        options  = entry["options"]
+        allow_ft = entry["allow_freetext"]
+        event    = entry["event"]
+        result   = entry["result"]
+
+        print()
+        print("\033[1;35m❓ Question from assistant:\033[0m")
+        print(f"   {question}")
+
+        if options:
+            print()
+            for i, opt in enumerate(options, 1):
+                label = opt.get("label", "")
+                desc  = opt.get("description", "")
+                line  = f"  [{i}] {label}"
+                if desc:
+                    line += f" — {desc}"
+                print(line)
+            if allow_ft:
+                print("  [0] Type a custom answer")
+            print()
+
+            while True:
+                try:
+                    raw = input("Your choice (number or text): ").strip()
+                except (EOFError, KeyboardInterrupt):
+                    raw = ""
+                    break
+
+                if raw.isdigit():
+                    idx = int(raw)
+                    if 1 <= idx <= len(options):
+                        raw = options[idx - 1]["label"]
+                        break
+                    elif idx == 0 and allow_ft:
+                        try:
+                            raw = input("Your answer: ").strip()
+                        except (EOFError, KeyboardInterrupt):
+                            raw = ""
+                        break
+                elif allow_ft:
+                    break  # accept free text directly
+        else:
+            # Free-text only
+            print()
+            try:
+                raw = input("Your answer: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                raw = ""
+
+        result.append(raw)
+        event.set()
+
+    return True
+
+
 # ── Dispatcher (backward-compatible wrapper) ──────────────────────────────
 
 def execute_tool(
@@ -440,6 +585,17 @@ def _register_builtins() -> None:
             read_only=True,
             concurrent_safe=True,
         ),
+        ToolDef(
+            name="AskUserQuestion",
+            schema=TOOL_SCHEMAS[8],
+            func=lambda p, c: _ask_user_question(
+                p["question"],
+                p.get("options"),
+                p.get("allow_freetext", True),
+            ),
+            read_only=True,
+            concurrent_safe=False,
+        ),
     ]
     for td in _tool_defs:
         register_tool(td)
@@ -471,3 +627,12 @@ import skill.tools as _skill_tools  # noqa: F401
 # mcp/tools.py connects to configured MCP servers and registers their tools.
 # Connection happens in a background thread so startup is not blocked.
 import mcp.tools as _mcp_tools  # noqa: F401
+
+
+# ── Plugin tools ───────────────────────────────────────────────────────────────
+# Load tools contributed by installed+enabled plugins.
+try:
+    from plugin.loader import register_plugin_tools as _reg_plugin_tools
+    _reg_plugin_tools()
+except Exception as _plugin_err:
+    pass  # Plugin loading is best-effort; never crash startup

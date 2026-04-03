@@ -27,6 +27,7 @@
 ---
 
 ## 🔥🔥🔥 News (Pacific Time)
+- 02:50 PM, Apr 03, 2026: **v3.02** — Plugin system (`plugin/` package): install/uninstall/enable/disable/update via `/plugin` CLI, recommendation engine (keyword+tag matching), multi-scope (user/project), git-based marketplace. `AskUserQuestion` tool: interactive mid-task user prompts with numbered options and free-text input (**~8500** lines of Python).
 - 10:00 AM, Apr 03, 2026: **v3.01** — MCP (Model Context Protocol) support: `mcp/` package, stdio + SSE + HTTP transports, auto tool discovery, `/mcp` command, 34 new tests (**~7000** lines of Python).
 - 12:20 PM, Apr 02, 2026: **v3.0** — Multi-agent packages (`multi_agent/`), memory package (`memory/`), skill package (`skill/`) with built-in skills, argument substitution, fork/inline execution, AI memory search, git worktree isolation, agent type definitions (**~5000** lines of Python), see [update](https://github.com/SafeRL-Lab/nano-claude-code/blob/main/docs/update_readme_v3.0.md).
 - 10:00 AM, Apr 02, 2026: **v2.0** — Context compression, memory, sub-agents, skills, diff view, tool plugin system (**~3400** lines of Python Code).
@@ -59,6 +60,8 @@ A minimal Python implementation of Claude Code in ~900 lines (Initial version), 
   * [Skills](#skills)
   * [Sub-Agents](#sub-agents)
   * [MCP (Model Context Protocol)](#mcp-model-context-protocol)
+  * [Plugin System](#plugin-system)
+  * [AskUserQuestion Tool](#askuserquestion-tool)
   * [Context Compression](#context-compression)
   * [Diff View](#diff-view)
   * [CLAUDE.md Support](#claudemd-support)
@@ -76,8 +79,10 @@ A minimal Python implementation of Claude Code in ~900 lines (Initial version), 
 | Multi-provider | Anthropic · OpenAI · Gemini · Kimi · Qwen · Zhipu · DeepSeek · Ollama · LM Studio · Custom endpoint |
 | Interactive REPL | readline history, Tab-complete slash commands |
 | Agent loop | Streaming API + automatic tool-use loop |
-| 20 built-in tools | Read · Write · Edit · Bash · Glob · Grep · WebFetch · WebSearch · MemorySave · MemoryDelete · MemorySearch · MemoryList · Agent · SendMessage · CheckAgentResult · ListAgentTasks · ListAgentTypes · Skill · SkillList · *(MCP tools auto-added at startup)* |
+| 21 built-in tools | Read · Write · Edit · Bash · Glob · Grep · WebFetch · WebSearch · MemorySave · MemoryDelete · MemorySearch · MemoryList · Agent · SendMessage · CheckAgentResult · ListAgentTasks · ListAgentTypes · Skill · SkillList · AskUserQuestion · *(MCP + plugin tools auto-added at startup)* |
 | MCP integration | Connect any MCP server (stdio/SSE/HTTP), tools auto-registered and callable by Claude |
+| Plugin system | Install/uninstall/enable/disable/update plugins from git URLs or local paths; multi-scope (user/project); recommendation engine |
+| AskUserQuestion | Claude can pause and ask the user a clarifying question mid-task, with optional numbered choices |
 | Diff view | Git-style red/green diff display for Edit and Write |
 | Context compression | Auto-compact long conversations to stay within model limits |
 | Persistent memory | Dual-scope memory (user + project) with 4 types, AI search, staleness warnings |
@@ -904,6 +909,102 @@ that are not alphanumeric or `_` are automatically replaced with `_`.
 | `mcp-server-brave-search` | `uvx mcp-server-brave-search` | Brave web search |
 
 > Browse the full registry at [modelcontextprotocol.io/servers](https://modelcontextprotocol.io/servers)
+
+---
+
+## Plugin System
+
+The `plugin/` package lets you extend nano-claude-code with additional tools, skills, and MCP servers from git repositories or local directories.
+
+### Install a plugin
+
+```bash
+/plugin install my-plugin@https://github.com/user/my-plugin
+/plugin install local-plugin@/path/to/local/plugin
+```
+
+### Manage plugins
+
+```bash
+/plugin                   # list installed plugins
+/plugin enable my-plugin  # enable a disabled plugin
+/plugin disable my-plugin # disable without uninstalling
+/plugin disable-all       # disable all plugins
+/plugin update my-plugin  # pull latest from git
+/plugin uninstall my-plugin
+/plugin info my-plugin    # show manifest details
+```
+
+### Plugin recommendation engine
+
+```bash
+/plugin recommend                    # auto-detect from project files
+/plugin recommend "docker database"  # recommend by keyword context
+```
+
+The engine matches your context against a curated marketplace (git-tools, python-linter, docker-tools, sql-tools, test-runner, diagram-tools, aws-tools, web-scraper) using tag and keyword scoring.
+
+### Plugin manifest (plugin.json)
+
+```json
+{
+  "name": "my-plugin",
+  "version": "0.1.0",
+  "description": "Does something useful",
+  "author": "you",
+  "tags": ["git", "python"],
+  "tools": ["tools"],        // Python module(s) that export TOOL_DEFS
+  "skills": ["skills/my.md"],
+  "mcp_servers": {},
+  "dependencies": ["httpx"]  // pip packages
+}
+```
+
+Alternatively use YAML frontmatter in `PLUGIN.md`.
+
+### Scopes
+
+| Scope | Location | Config |
+|-------|----------|--------|
+| user (default) | `~/.nano_claude/plugins/` | `~/.nano_claude/plugins.json` |
+| project | `.nano_claude/plugins/` | `.nano_claude/plugins.json` |
+
+Use `--project` flag: `/plugin install name@url --project`
+
+---
+
+## AskUserQuestion Tool
+
+Claude can pause mid-task and interactively ask you a question before proceeding.
+
+**Example invocation by Claude:**
+```json
+{
+  "tool": "AskUserQuestion",
+  "question": "Which database should I use?",
+  "options": [
+    {"label": "SQLite", "description": "Simple, file-based"},
+    {"label": "PostgreSQL", "description": "Full-featured, requires server"}
+  ],
+  "allow_freetext": true
+}
+```
+
+**What you see in the terminal:**
+```
+❓ Question from assistant:
+   Which database should I use?
+
+  [1] SQLite — Simple, file-based
+  [2] PostgreSQL — Full-featured, requires server
+  [0] Type a custom answer
+
+Your choice (number or text):
+```
+
+- Select by number or type free text directly
+- Claude receives your answer and continues the task
+- 5-minute timeout (returns "(no answer — timeout)" if unanswered)
 
 ---
 

@@ -48,6 +48,16 @@ MCP servers extend your toolset with external capabilities. Tools from MCP serve
 available under the naming pattern `mcp__<server_name>__<tool_name>`.
 Use `/mcp` to list configured servers and their connection status.
 
+## Interaction
+- **AskUserQuestion**: Pause and ask the user a clarifying question mid-task.
+  Use when you need a decision before proceeding. Supports optional choices list.
+  Example: `AskUserQuestion(question="Which approach?", options=[{{"label":"A"}},{{"label":"B"}}])`
+
+## Plugins
+Plugins extend nano-claude-code with additional tools, skills, and MCP servers.
+Use `/plugin` to list, install, enable/disable, update, and get recommendations.
+Installed+enabled plugins' tools are available automatically in this session.
+
 # Guidelines
 - Be concise and direct. Lead with the answer.
 - Prefer editing existing files over creating new ones.
