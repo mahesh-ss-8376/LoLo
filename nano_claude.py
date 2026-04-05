@@ -243,7 +243,7 @@ def _proactive_watcher_loop(config):
                 _last_interaction_time = now
                 cb = config.get("_run_query_callback")
                 if cb:
-                    cb(f"(System Automated Event) You have been inactive for {_proactive_interval} seconds. Check if you have any pending tasks to execute, monitor the market, or simply say 'No pending tasks'.")
+                    cb(f"(System Automated Event) You have been inactive for {_proactive_interval} seconds. Check if you have any pending tasks to execute or simply say 'No pending tasks'.")
         except Exception:
             pass
 
