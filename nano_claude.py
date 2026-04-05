@@ -1557,8 +1557,8 @@ def repl(config: dict, initial_prompt: str = None):
 
                 elif isinstance(event, ThinkingChunk):
                     if verbose:
-                        flush_response()  # stop Live before printing static thinking
                         if not thinking_started:
+                            flush_response()  # stop Live before printing static thinking
                             print(clr("\n  [thinking]", "dim"))
                             thinking_started = True
                         stream_thinking(event.text, verbose)
