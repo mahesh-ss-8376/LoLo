@@ -617,8 +617,38 @@ The full debate results have been saved to the file: {out_file}
 Please read that file, then analyze the diverse perspectives. Identify the strongest ideas, potential conflicts, and provide a synthesized 'Master Plan' with concrete phases. Be concise and actionable."""
 
     # Return sentinel to trigger synthesis via run_query in the main REPL loop
-    # (run_query already appends to state.messages, so no manual append here)
-    return ("__brainstorm__", synthesis_prompt)
+    # Pass out_file so the REPL can append the synthesis to the same file.
+    return ("__brainstorm__", synthesis_prompt, str(out_file))
+
+def _save_synthesis(state, out_file: str) -> None:
+    """Append the last assistant response as the synthesis section of the brainstorm file."""
+    from pathlib import Path
+    for msg in reversed(state.messages):
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            text = "".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            )
+        else:
+            return
+        text = text.strip()
+        if not text:
+            return
+        try:
+            with Path(out_file).open("a", encoding="utf-8") as f:
+                f.write("\n\n---\n\n## 🧠 Synthesis — Master Plan\n\n")
+                f.write(text)
+                f.write("\n")
+            ok(f"Synthesis appended to {clr(out_file, 'bold')}")
+        except Exception as e:
+            err(f"Failed to save synthesis: {e}")
+        return
+
 
 def cmd_clear(_args: str, state, _config) -> bool:
     state.messages.clear()
@@ -2287,12 +2317,13 @@ def repl(config: dict, initial_prompt: str = None):
                 except KeyboardInterrupt:
                     print(clr("\n  (interrupted)", "yellow"))
                 continue
-            # Brainstorm sentinel: ("__brainstorm__", synthesis_prompt)
+            # Brainstorm sentinel: ("__brainstorm__", synthesis_prompt, out_file)
             if result[0] == "__brainstorm__":
-                _, brain_prompt = result
+                _, brain_prompt, brain_out_file = result
                 print(clr("\n  ── Analysis from Main Agent ──", "dim"))
                 try:
                     run_query(brain_prompt)
+                    _save_synthesis(state, brain_out_file)
                 except KeyboardInterrupt:
                     print(clr("\n  (interrupted)", "yellow"))
                 continue
