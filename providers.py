@@ -307,9 +307,20 @@ def messages_to_openai(messages: list, pass_images: bool = False) -> list:
         role = m["role"]
 
         if role == "user":
-            msg_out = {"role": "user", "content": m["content"]}
-            if pass_images and m.get("images"):
-                msg_out["images"] = m["images"]
+            content = m["content"]
+            if not pass_images and m.get("images"):
+                # OpenAI/Gemini multipart format
+                parts = [{"type": "text", "text": content}]
+                for img_b64 in m["images"]:
+                    parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                    })
+                msg_out = {"role": "user", "content": parts}
+            elif pass_images and m.get("images"):
+                msg_out = {"role": "user", "content": content, "images": m["images"]}
+            else:
+                msg_out = {"role": "user", "content": content}
             result.append(msg_out)
 
         elif role == "assistant":
