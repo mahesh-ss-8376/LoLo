@@ -1842,14 +1842,42 @@ SSJ option 4 runs a structured multi-round expert debate on any file:
 ### Setup (one-time)
 
 1. Open [@BotFather](https://t.me/BotFather) in Telegram → `/newbot` → copy the token.
-2. Send any message to your new bot, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and note your `chat.id`.
-3. Configure cheetahclaws:
+2. Send any message to your new bot (e.g. "hi"), then open the URL below in your browser — replace `<TOKEN>` with your real token:
 
 ```
-[myproject] ❯ /telegram <your_bot_token> <your_chat_id>
+https://api.telegram.org/bot<TOKEN>/getUpdates
+```
+
+The response is JSON. Find `"chat"` → `"id"` — that number is your chat ID:
+
+```json
+{
+  "ok": true,
+  "result": [
+    {
+      "update_id": 100000001,
+      "message": {
+        "from": { "id": 987654321, "first_name": "Zhang" },
+        "chat": {
+          "id": 987654321,
+          "type": "private"
+        },
+        "text": "hi"
+      }
+    }
+  ]
+}
+```
+
+> **Tip:** if `result` is empty, go back to Telegram, send another message to your bot, then refresh the URL.
+
+3. Configure cheetahclaws (example with the values above):
+
+```
+[myproject] ❯ /telegram 7812345678:AAFxyz123abcDEF456ghiJKL789 987654321
   ✓ Telegram config saved.
   ✓ Connected to @your_bot_name. Starting bridge...
-  ✓ Telegram bridge active. Chat ID: 123456789
+  ✓ Telegram bridge active. Chat ID: 987654321
   ℹ Send messages to your bot — they'll be processed here.
   ℹ Stop with /telegram stop or send /stop in Telegram.
 ```
