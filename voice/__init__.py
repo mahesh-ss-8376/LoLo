@@ -8,7 +8,7 @@ transcribe(...)      → text string
 voice_input(...)     → transcribed text (record + transcribe in one call)
 """
 
-from .recorder import check_recording_availability, record_until_silence
+from .recorder import check_recording_availability, record_until_silence, list_input_devices
 from .stt import check_stt_availability, transcribe
 from .keyterms import get_voice_keyterms
 
@@ -28,10 +28,11 @@ def voice_input(
     language: str = "auto",
     max_seconds: int = 30,
     on_energy: "callable | None" = None,
+    device_index: "int | None" = None,
 ) -> str:
     """Record until silence, then transcribe.  Returns transcribed text."""
     keyterms = get_voice_keyterms()
-    pcm = record_until_silence(max_seconds=max_seconds, on_energy=on_energy)
+    pcm = record_until_silence(max_seconds=max_seconds, on_energy=on_energy, device_index=device_index)
     if not pcm:
         return ""
     return transcribe(pcm, keyterms=keyterms, language=language)
@@ -42,6 +43,7 @@ __all__ = [
     "check_recording_availability",
     "check_stt_availability",
     "record_until_silence",
+    "list_input_devices",
     "transcribe",
     "get_voice_keyterms",
     "voice_input",

@@ -64,9 +64,21 @@ def check_recording_availability() -> tuple[bool, str | None]:
 
 # ── sounddevice backend ───────────────────────────────────────────────────
 
+def list_input_devices() -> list[dict]:
+    """Return a list of available input devices with index and name."""
+    import sounddevice as sd
+    devices = sd.query_devices()
+    result = []
+    for i, d in enumerate(devices):
+        if d["max_input_channels"] > 0:
+            result.append({"index": i, "name": d["name"]})
+    return result
+
+
 def _record_sounddevice(
     max_seconds: int = 30,
     on_energy: "callable | None" = None,
+    device_index: "int | None" = None,
 ) -> bytes:
     import sounddevice as sd
     import numpy as np
@@ -103,13 +115,16 @@ def _record_sounddevice(
             done_evt.set()
             raise sd.CallbackStop()
 
-    with sd.InputStream(
+    stream_kwargs = dict(
         samplerate=SAMPLE_RATE,
         channels=CHANNELS,
         dtype=DTYPE,
         blocksize=chunk_samples,
         callback=callback,
-    ):
+    )
+    if device_index is not None:
+        stream_kwargs["device"] = device_index
+    with sd.InputStream(**stream_kwargs):
         done_evt.wait(timeout=max_seconds + 2)
 
     return b"".join(chunks)
@@ -215,6 +230,7 @@ def _record_sox(
 def record_until_silence(
     max_seconds: int = 30,
     on_energy: "callable | None" = None,
+    device_index: "int | None" = None,
 ) -> bytes:
     """Record from microphone until silence or max_seconds.
 
@@ -224,7 +240,7 @@ def record_until_silence(
     """
     try:
         import sounddevice  # noqa: F401
-        return _record_sounddevice(max_seconds=max_seconds, on_energy=on_energy)
+        return _record_sounddevice(max_seconds=max_seconds, on_energy=on_energy, device_index=device_index)
     except (ImportError, OSError):
         pass
 
