@@ -21,8 +21,9 @@ class PluginManifest:
     description: str = ""
     author: str = ""
     tags: list[str] = field(default_factory=list)
-    tools: list[str] = field(default_factory=list)    # python modules exporting tools
-    skills: list[str] = field(default_factory=list)   # skill .md files
+    tools: list[str] = field(default_factory=list)     # python modules exporting TOOL_DEFS
+    skills: list[str] = field(default_factory=list)    # skill .md files
+    commands: list[str] = field(default_factory=list)  # python modules exporting COMMAND_DEFS
     mcp_servers: dict[str, Any] = field(default_factory=dict)  # name → mcp server config
     dependencies: list[str] = field(default_factory=list)      # pip packages
     homepage: str = ""
@@ -37,6 +38,7 @@ class PluginManifest:
             tags=data.get("tags", []),
             tools=data.get("tools", []),
             skills=data.get("skills", []),
+            commands=data.get("commands", []),
             mcp_servers=data.get("mcp_servers", {}),
             dependencies=data.get("dependencies", []),
             homepage=data.get("homepage", ""),

@@ -73,6 +73,14 @@ English | [中文](https://github.com/SafeRL-Lab/clawspring/blob/main/docs/READM
 ## 🔥🔥🔥 News (Pacific Time)
 
 
+- Apr 08, 2026 (**v3.05.55**): **Modular ecosystem, TTS Content Factory, CJK voice auto-detect, readline ANSI fix**
+  - **Modular ecosystem (`modular/`)** — new plug-and-play module folder. Each submodule (`modular/video/`, `modular/voice/`) is self-contained with its own `cmd.py` exporting a `COMMAND_DEFS` dict. The registry auto-discovers all modules at startup; missing modules degrade gracefully without affecting the rest of the system. Existing `video/` and `voice/` imports continue to work via backward-compat shims.
+  - **TTS Content Factory (`/tts`)** — new command for AI-powered text-to-speech generation. Interactive wizard: choose a voice style (narrator, newsreader, storyteller, ASMR, motivational, documentary, children, podcast, meditation, custom), duration, TTS engine (Gemini → ElevenLabs → Edge, best available), and individual voice. In AI mode the active model writes the script; in custom-text mode you paste your own. Output: `.mp3` audio + `_script.txt` companion file. Also accessible as option 12 in `/ssj`.
+  - **CJK auto-voice detection** — Edge TTS with an English voice silently skips Chinese/Japanese/Korean characters (only reads the Latin parts). The TTS backend now detects CJK-heavy text and auto-switches to `zh-CN-XiaoxiaoNeural` when a non-CJK voice is selected, ensuring the full text is synthesized.
+  - **Edge TTS long-text chunking** — Edge TTS silently truncates text beyond ~3 000 chars. The pipeline now splits text into ≤ 2 000-char chunks at sentence boundaries, synthesizes each chunk independently, and concatenates with ffmpeg — audio now always covers the complete script.
+  - **Readline ANSI fix** (#29 / #31) — ANSI color codes in `input()` prompts now wrapped with `\001…\002` (RL_PROMPT_START/END_IGNORE) so readline accounts for them as zero-width. Fixes cursor drift and duplicate-line content when scrolling REPL history.
+  - **SSJ Developer Mode extended** — SSJ menu now includes option 11 (🎬 Video factory, conditional) and option 12 (🎙 TTS factory, conditional), matching the modular availability flags.
+
 - Apr 07, 2026 (**v3.05.54**): **Video factory major upgrade: custom script mode, PIL subtitle engine, web image search, wizard UX overhaul: Idea → Story → Final AI Video**. Inspired by Kevin, with sincere thanks for his great help and inspiration in making this project better.
   - **Custom script mode** — new content mode in `/video` wizard. Choose "Custom script" to paste your own narration text: TTS reads it aloud, and the same text is automatically shown as subtitles (timed proportionally). No AI story generation step, no Whisper required. Ideal for product promos, personal narrations, and multilingual content.
   - **PIL subtitle rendering engine** — subtitles are now rendered with Pillow (PIL) + NotoSansSC font instead of the libass filter. This fixes non-Latin characters (Chinese, Japanese, Korean, Cyrillic, Arabic) showing as black boxes. The pipeline uses a two-pass approach: fast `-c:v copy` assembly, then PIL-rendered PNG overlays burned in via ffmpeg `filter_complex`. Falls back to no subtitles if PIL fails — never crashes the pipeline.
@@ -152,6 +160,7 @@ CheetahClaws: **A Lightweight** and **Easy-to-Use** Python Reimplementation of C
   * [SSJ Developer Mode](#ssj-developer-mode)
   * [Telegram Bridge](#telegram-bridge)
   * [Video Content Factory](#video-content-factory)
+  * [TTS Content Factory](#tts-content-factory)
   * [Proactive Background Monitoring](#proactive-background-monitoring)
   * [Checkpoint System](#checkpoint-system)
   * [Plan Mode](#plan-mode)
@@ -334,10 +343,11 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | 36 slash commands | `/model` · `/config` · `/save` · `/cost` · `/memory` · `/skills` · `/agents` · `/voice` · `/proactive` · `/checkpoint` · `/plan` · `/compact` · `/status` · `/doctor` · … |
 | Voice input | Record → transcribe → auto-submit. Backends: `sounddevice` / `arecord` / SoX + `faster-whisper` / `openai-whisper` / OpenAI API. Works fully offline. |
 | Brainstorm | `/brainstorm [topic]` generates N expert personas suited to the topic (2–100, default 5, chosen interactively), runs an iterative debate, saves results to `brainstorm_outputs/`, and synthesizes a Master Plan + auto-generates `brainstorm_outputs/todo_list.txt`. |
-| SSJ Developer Mode | `/ssj` opens a persistent interactive power menu with 10 shortcuts: Brainstorm, TODO viewer, Worker, Expert Debate, Propose, Review, Readme, Commit, Scan, Promote. Stays open between actions; `/command` passthrough supported. Debate shows animated per-round spinner and saves result next to the debated file. |
+| SSJ Developer Mode | `/ssj` opens a persistent interactive power menu with up to 12 shortcuts: Brainstorm, TODO viewer, Worker, Expert Debate, Propose, Review, Readme, Commit, Scan, Promote, Video factory (if available), TTS factory (if available). Stays open between actions; `/command` passthrough supported. |
 | Worker | `/worker [task#s]` reads `brainstorm_outputs/todo_list.txt`, implements each pending task with a dedicated model prompt, and marks it done (`- [x]`). Supports task selection (`/worker 1,4,6`), custom path (`--path`), and worker count limit (`--workers`). Detects and redirects accidental brainstorm `.md` paths. |
 | Telegram bridge | `/telegram <token> <chat_id>` starts a bot bridge: receive messages from Telegram, run the model, and reply — all from your phone. Typing indicator, slash command passthrough (including interactive menus), and auto-start on launch if configured. |
 | Video factory | `/video [topic]` runs the full AI video pipeline: story generation (active model) → TTS narration (Edge/Gemini/ElevenLabs) → AI images (Gemini Web free or placeholders) → subtitle burn (Whisper) → FFmpeg assembly → final `.mp4`. 10 viral content niches, landscape or short format, zero-cost path available. |
+| TTS factory | `/tts` interactive wizard: AI writes script (or paste your own) → synthesize to MP3 in any voice style (narrator, newsreader, storyteller, ASMR, motivational, documentary, children, podcast, meditation, custom). Engine auto-selects: Gemini TTS → ElevenLabs → Edge TTS (always-free). CJK text auto-switches to a matching voice. |
 | Vision input | `/image` (or `/img`) captures the clipboard image and sends it to any vision-capable model — Ollama (`llava`, `gemma4`, `llama3.2-vision`) via native format, or cloud models (GPT-4o, Gemini 2.0 Flash, …) via OpenAI `image_url` multipart format. Requires `pip install cheetahclaws[vision]`; Linux also needs `xclip`. |
 | Proactive monitoring | `/proactive [duration]` starts a background sentinel daemon; agent wakes automatically after inactivity, enabling continuous monitoring loops without user prompts |
 | Force quit | 3× Ctrl+C within 2 seconds triggers `os._exit(1)` — kills the process immediately regardless of blocking I/O |
@@ -861,6 +871,8 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/video niches` | List all 10 viral content niches |
 | `/video --niche <id> [topic]` | Use a specific content niche |
 | `/video --short [topic]` | Generate vertical short format (9:16) |
+| `/tts [topic]` | TTS Content Factory: AI script → any voice style → MP3 audio file |
+| `/tts status` | Show TTS dependency availability (ffmpeg, edge-tts, API keys) |
 | `/checkpoint` | List all checkpoints (snapshots) for the current session |
 | `/checkpoint <id>` | Rewind to checkpoint — restore files and conversation to that snapshot |
 | `/checkpoint clear` | Delete all checkpoints for the current session |
@@ -1706,6 +1718,8 @@ Generating diverse perspectives...
 | 8 | 💬 Commit | Analyse git diff and suggest a conventional commit message |
 | 9 | 🧪 Scan | Summarise all staged/unstaged changes and suggest next steps |
 | 10 | 📝 Promote | Read the latest brainstorm output → convert ideas to `todo_list.txt` tasks |
+| 11 | 🎬 Video | Launch the Video Content Factory wizard (if `modular/video` is available) |
+| 12 | 🎙 TTS | Launch the TTS Content Factory wizard (if `modular/voice` is available) |
 | 0 | 🚪 Exit | Return to the main REPL |
 
 ### Usage
@@ -1725,6 +1739,8 @@ Generating diverse perspectives...
 │   8.  💬  Commit     — AI-suggested commit message
 │   9.  🧪  Scan       — Analyze git diff
 │  10.  📝  Promote    — Idea to tasks
+│  11.  🎬  Video      — Video Content Factory
+│  12.  🎙  TTS        — TTS Content Factory
 │   0.  🚪  Exit SSJ Mode
 │
 ╰──────────────────────────────────────────────
@@ -2120,6 +2136,94 @@ video_tmp/batch_20260407_153000/story/
 | `playwright` | `pip install playwright && playwright install chromium` | Gemini Web images (optional) |
 | `GEMINI_API_KEY` | env var | Gemini TTS + story generation |
 | `ELEVENLABS_API_KEY` | env var | ElevenLabs TTS (optional) |
+
+---
+
+## TTS Content Factory
+
+`/tts` is an AI-powered audio generation wizard. Give it a topic — or paste your own script — and it produces a narrated MP3 in any voice style.
+
+### Quick start
+
+```bash
+# Install free TTS backend (no API key needed)
+pip install edge-tts
+
+# Launch interactive wizard
+[myproject] ❯ /tts
+```
+
+The wizard walks through every setting with `Enter = Auto` at every step. Type `b` to go back, `q` to quit.
+
+### Wizard walkthrough
+
+```
+╭─ 🎙 TTS Content Factory ────────────────────────────────╮
+│  Enter=Auto on every step  ·  b=back  ·  q=quit         │
+╰─────────────────────────────────────────────────────────╯
+
+[0] Content mode
+  1. Auto         (AI generates script from your topic)
+  2. Custom text  (paste your own script → TTS reads every word)
+
+[1] Voice style   ← narrator / newsreader / storyteller / ASMR / motivational /
+                     documentary / children / podcast / meditation / custom
+[2] Duration      ← Auto~1 min / 30s / 1m / 2m / 3m / 5m / custom  (AI mode only)
+[3] TTS Engine    ← Auto / Edge (free) / Gemini / ElevenLabs
+[4] Voice         ← Auto (style preset) / individual Gemini or Edge voice
+[5] Output folder ← default: ./tts_output/
+```
+
+Output files:
+
+```
+tts_output/
+├── tts_1712345678.mp3          # synthesized audio
+└── tts_1712345678_script.txt   # companion script text
+```
+
+### Voice style presets
+
+| Style | Description | Default Gemini voice | Default Edge voice |
+|---|---|---|---|
+| Narrator | Calm, authoritative | Charon | en-US-GuyNeural |
+| Newsreader | Professional, neutral | Aoede | en-US-AriaNeural |
+| Storyteller | Dramatic, immersive | Fenrir | en-US-DavisNeural |
+| ASMR | Soft, intimate, relaxing | Aoede | en-US-JennyNeural |
+| Motivational | Energetic, inspiring | Puck | en-US-TonyNeural |
+| Documentary | Informative, thoughtful | Charon | en-GB-RyanNeural |
+| Children | Warm, playful | Kore | en-US-AnaNeural |
+| Podcast | Conversational, casual | Puck | en-US-GuyNeural |
+| Meditation | Slow, peaceful | Aoede | en-US-JennyNeural |
+| Custom | Describe your own style | Charon | en-US-GuyNeural |
+
+### TTS backends
+
+| Engine | How | Cost | Quality |
+|---|---|---|---|
+| `gemini` | Gemini TTS API (`GEMINI_API_KEY`) | Free tier | Good |
+| `elevenlabs` | ElevenLabs REST (`ELEVENLABS_API_KEY`) | Paid | Excellent |
+| `edge` | Microsoft Edge TTS (`pip install edge-tts`) | **Free** | Good |
+| `auto` | Try gemini → elevenlabs → edge | — | Best available |
+
+**CJK auto-voice:** if the text is predominantly Chinese/Japanese/Korean and an English voice is selected, the backend automatically switches to `zh-CN-XiaoxiaoNeural` so every character is spoken — not silently skipped.
+
+**Long-text chunking:** texts over 2 000 chars are split at sentence boundaries, synthesized in chunks, and concatenated with ffmpeg. The full script is always read aloud regardless of length.
+
+### Requirements
+
+| Requirement | Install | Notes |
+|---|---|---|
+| `edge-tts` | `pip install edge-tts` | Free TTS (always-available fallback) |
+| `ffmpeg` | `sudo apt install ffmpeg` or `pip install imageio-ffmpeg` | Required for multi-chunk concat |
+| `GEMINI_API_KEY` | env var | Gemini TTS (optional) |
+| `ELEVENLABS_API_KEY` | env var | ElevenLabs TTS (optional) |
+
+Check status: `/tts status`
+
+### Also in SSJ mode
+
+`/tts` is available as option **12** in the SSJ Developer Mode menu, so you can chain it with brainstorm, worker, and video workflows in a single session.
 
 ---
 
@@ -2580,11 +2684,30 @@ cheetahclaws/
 │   ├── config.py         # Load .mcp.json (project) + ~/.cheetahclaws/mcp.json (user)
 │   └── tools.py          # Auto-discover + register MCP tools into tool_registry
 │
-├── voice/                # Voice input package (v3.05)
-│   ├── __init__.py       # Public API: check_voice_deps, voice_input
-│   ├── recorder.py       # Audio capture: sounddevice → arecord → sox rec
-│   ├── stt.py            # STT: faster-whisper → openai-whisper → OpenAI API
-│   └── keyterms.py       # Coding-domain vocab from git branch + project files
+├── voice/                # Voice input package (v3.05) — backward-compat shim → modular/voice/
+│   └── __init__.py       # Re-exports from modular.voice.*
+│
+├── video/                # Video package — backward-compat shim → modular/video/
+│   └── __init__.py       # Re-exports from modular.video.*
+│
+├── modular/              # Plug-and-play module ecosystem (v3.05.55)
+│   ├── __init__.py       # Auto-discovery registry: load_all_commands(), load_all_tools(), list_modules()
+│   ├── base.py           # HasCommandDefs / HasToolDefs Protocol interface docs
+│   ├── voice/            # Voice submodule (self-contained)
+│   │   ├── __init__.py   # Public API: check_voice_deps, voice_input, list_input_devices
+│   │   ├── cmd.py        # /voice + /tts commands; COMMAND_DEFS plug-in interface
+│   │   ├── recorder.py   # Audio capture: sounddevice → arecord → sox rec
+│   │   ├── stt.py        # STT: faster-whisper → openai-whisper → OpenAI API
+│   │   ├── keyterms.py   # Coding-domain vocab from git branch + project files
+│   │   └── tts_gen.py    # TTS pipeline: style presets, AI text gen, synthesis, run_tts_pipeline()
+│   └── video/            # Video submodule (self-contained)
+│       ├── __init__.py   # Re-exports
+│       ├── cmd.py        # /video command; COMMAND_DEFS plug-in interface
+│       ├── pipeline.py   # Full video assembly: story → TTS → images → subtitles → mp4
+│       ├── story.py      # AI story generation + niche prompts
+│       ├── tts.py        # TTS backends: Gemini → ElevenLabs → Edge; CJK auto-voice; chunking
+│       ├── images.py     # Image backends: Gemini Web → web-search → placeholder
+│       └── subtitles.py  # PIL subtitle renderer + text-to-SRT conversion
 │
 ├── checkpoint/           # Checkpoint system (v3.05.6)
 │   ├── __init__.py       # Public API exports
@@ -2609,7 +2732,7 @@ cheetahclaws/
     └── e2e_commands.py       # 9-step /init /export /copy /status test
 ```
 
-> **For developers:** Each feature package (`multi_agent/`, `memory/`, `skill/`, `mcp/`, `voice/`, `checkpoint/`) is self-contained. Add custom tools by calling `register_tool(ToolDef(...))` from any module imported by `tools.py`.
+> **For developers:** Each feature package (`multi_agent/`, `memory/`, `skill/`, `mcp/`, `checkpoint/`) is self-contained. Add custom tools by calling `register_tool(ToolDef(...))` from any module imported by `tools.py`. To add a new plug-and-play module to the ecosystem, create `modular/<name>/cmd.py` exporting `COMMAND_DEFS = {"cmdname": {"func": callable, "help": ..., "aliases": []}}` — it is auto-discovered at startup with no registration step.
 
 ---
 

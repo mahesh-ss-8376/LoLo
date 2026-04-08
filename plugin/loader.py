@@ -65,6 +65,35 @@ def load_plugin_skills(scope: PluginScope | None = None) -> list[Path]:
     return paths
 
 
+def load_plugin_commands(scope: PluginScope | None = None) -> dict[str, dict]:
+    """
+    Import command modules from enabled plugins and collect their COMMAND_DEFS.
+
+    Returns a merged dict:
+        { "command_name": {"func": callable, "help": (desc, [aliases]), "aliases": [...]} }
+
+    Plugin authors expose commands by adding a COMMAND_DEFS dict to their module.
+    Example module (video/cmd.py):
+        COMMAND_DEFS = {
+            "video": {
+                "func":    cmd_video,
+                "help":    ("AI video factory", ["status"]),
+                "aliases": [],
+            }
+        }
+    """
+    result: dict[str, dict] = {}
+    for entry in load_all_plugins(scope):
+        if not entry.manifest or not entry.manifest.commands:
+            continue
+        for module_name in entry.manifest.commands:
+            mod = _import_plugin_module(entry, module_name)
+            if mod and hasattr(mod, "COMMAND_DEFS"):
+                for cmd_name, cmd_def in mod.COMMAND_DEFS.items():
+                    result[cmd_name] = cmd_def
+    return result
+
+
 def load_plugin_mcp_configs(scope: PluginScope | None = None) -> dict:
     """Return mcp server configs contributed by enabled plugins."""
     configs: dict = {}

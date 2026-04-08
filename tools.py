@@ -866,7 +866,11 @@ def ask_input_interactive(prompt: str, config: dict, menu_text: str = None) -> s
         return text
     else:
         try:
-            return input(prompt)
+            # Wrap ANSI escape sequences so readline accounts for them as
+            # zero-width — fixes cursor drift and duplicate-line scrollback (#29/#31).
+            import re as _re
+            rl_prompt = _re.sub(r'(\x1b\[[0-9;]*m)', r'\001\1\002', prompt)
+            return input(rl_prompt)
         except (KeyboardInterrupt, EOFError):
             print()
             return ""

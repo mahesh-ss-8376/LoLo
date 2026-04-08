@@ -1,51 +1,22 @@
-"""Voice package for cheetahclaws.
-
-Public API
-----------
-check_voice_deps()   → (available: bool, reason: str | None)
-record_once(...)     → raw PCM bytes  (int16, 16 kHz, mono)
-transcribe(...)      → text string
-voice_input(...)     → transcribed text (record + transcribe in one call)
 """
+Backward-compatibility shim.
+Real implementation: modular/voice/
 
-from .recorder import check_recording_availability, record_until_silence, list_input_devices
-from .stt import check_stt_availability, transcribe, transcribe_audio_file
-from .keyterms import get_voice_keyterms
+'from voice import X' and 'from voice.stt import Y' still work.
+"""
+import importlib as _il
+import sys as _sys
 
+# Import the real package — triggers its own __init__
+_real = _il.import_module("modular.voice")
 
-def check_voice_deps() -> tuple[bool, str | None]:
-    """Return (available, reason_if_not)."""
-    rec_ok, rec_reason = check_recording_availability()
-    if not rec_ok:
-        return False, rec_reason
-    stt_ok, stt_reason = check_stt_availability()
-    if not stt_ok:
-        return False, stt_reason
-    return True, None
+# Re-export everything from the real package
+from modular.voice import *  # noqa: F401, F403
 
-
-def voice_input(
-    language: str = "auto",
-    max_seconds: int = 30,
-    on_energy: "callable | None" = None,
-    device_index: "int | None" = None,
-) -> str:
-    """Record until silence, then transcribe.  Returns transcribed text."""
-    keyterms = get_voice_keyterms()
-    pcm = record_until_silence(max_seconds=max_seconds, on_energy=on_energy, device_index=device_index)
-    if not pcm:
-        return ""
-    return transcribe(pcm, keyterms=keyterms, language=language)
-
-
-__all__ = [
-    "check_voice_deps",
-    "check_recording_availability",
-    "check_stt_availability",
-    "record_until_silence",
-    "list_input_devices",
-    "transcribe",
-    "transcribe_audio_file",
-    "get_voice_keyterms",
-    "voice_input",
-]
+# Register submodules so 'from voice.X import Y' works
+for _sub in ["recorder", "stt", "keyterms", "cmd"]:
+    try:
+        _m = _il.import_module(f"modular.voice.{_sub}")
+        _sys.modules.setdefault(f"voice.{_sub}", _m)
+    except ImportError:
+        pass
