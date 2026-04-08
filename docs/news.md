@@ -2,6 +2,27 @@
  
 ## 🔥🔥🔥 News (Pacific Time)
 
+- Apr 06, 2026 (**v3.05.53**): **Telegram interactive menus, `/img` alias, `/voice device`, OpenAI/Gemini vision support**
+  - **Telegram interactive menus fixed** — slash commands with interactive input (e.g. `/ollama`, `/permission`, `/checkpoint`) were blocking the Telegram poll loop, making it impossible to respond to the menu prompts. Slash commands now run in a daemon thread (like regular queries), keeping the poll loop free. All interactive menus (`ask_input_interactive`) work correctly over Telegram.
+  - **`/img` alias** — `/img` is now an alias for `/image`, for faster clipboard-image workflows.
+  - **`/voice device`** — new subcommand to list all available input microphones and select one interactively. The selected device index is persisted in the session config and shown in `/voice status`. Useful on systems with multiple audio interfaces (e.g. USB headset + built-in mic).
+  - **Vision support for OpenAI / Gemini models** — `/img` (and `/image`) now sends images in the OpenAI multipart `image_url` format to cloud vision models (GPT-4o, Gemini 2.0 Flash, etc.), in addition to the existing Ollama native format. No configuration change needed — the correct format is selected automatically based on the active provider.
+  - **Bug fix: threading race condition** — `_in_telegram_turn` is now tracked via `threading.local()` per-slash-runner thread instead of a shared config key, eliminating a race condition that could corrupt the flag when a regular message arrived while an interactive slash command was waiting for input.
+
+- Apr 06, 2026 (**v3.05.52**): **Checkpoint system, plan mode, compact, and utility commands, support MiniMax Models, fix telegram bugs** With sincere thanks for Xiaohan's great help in making this project better.
+  - **Checkpoint system** (`checkpoint/` package): auto-snapshots conversation state and file changes after every turn. `/checkpoint` lists all snapshots; `/checkpoint <id>` rewinds both files and conversation history to any previous state; `/checkpoint clear` removes all snapshots for the session. `/rewind` is an alias. 100-snapshot sliding window; initial snapshot captured at session start. Throttling: skips when nothing changed. File backups use copy-on-write; snapshots capture post-edit state.
+  - **Plan mode**: `/plan <desc>` enters a read-only analysis mode — Claude may only read the codebase and write to a dedicated plan file (`.nano_claude/plans/<session_id>.md`). All other writes are silently blocked with a helpful message. `/plan` shows the current plan; `/plan done` exits plan mode and restores original permissions; `/plan status` reports whether plan mode is active. Two new agent tools — `EnterPlanMode` and `ExitPlanMode` — let Claude autonomously enter and exit plan mode for complex multi-file tasks; both are auto-approved in all permission modes.
+  - **`/compact [focus]`**: manually trigger conversation compaction at any time. An optional focus string guides the LLM summarizer on what context to preserve. Auto-compact and manual compact both restore plan file context after compaction.
+  - **Utility commands**: `/init` creates a `CLAUDE.md` template in the current directory; `/export [filename]` exports the conversation as Markdown (default) or JSON; `/copy` copies the last assistant response to the clipboard (Windows/macOS/Linux); `/status` shows version, model, provider, permissions, session ID, token usage, and context %; `/doctor` diagnoses installation health (Python version, git, API key + live connectivity test, optional deps, CLAUDE.md presence, checkpoint disk usage, permission mode).
+
+- Apr 06, 2026 (**v3.05.51**): **Project renamed from Nano Claude Code to CheetahClaws**
+  - The project has been rebranded from **Nano Claude Code** to **CheetahClaws** — a more distinctive name that captures the spirit of the tool: a sharp, agile coding assistant. The `Cl` in CheetahClaws is a subtle nod to Claude.
+  - CLI command: `nano_claude` → `cheetahclaws`
+  - PyPI package: `nano-claude-code` → `cheetahclaws`
+  - Config directory: `~/.nano_claude/` → `~/.clawnest/` → `~/.cheetahclaws/`
+  - Main entry point: `nano_claude.py` → `cheetahclaws.py`
+  - All documentation, GitHub URLs, and internal references updated accordingly.
+  - Added **CheetahClaws vs OpenClaw** comparison section to README.
 
 - Apr 06, 2026 (**v3.05.53**): **Telegram interactive menus, `/img` alias, `/voice device`, OpenAI/Gemini vision support**
   - **Telegram interactive menus fixed** — slash commands with interactive input (e.g. `/ollama`, `/permission`, `/checkpoint`) were blocking the Telegram poll loop, making it impossible to respond to the menu prompts. Slash commands now run in a daemon thread (like regular queries), keeping the poll loop free. All interactive menus (`ask_input_interactive`) work correctly over Telegram.
