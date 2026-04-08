@@ -72,6 +72,17 @@ English | [Español](https://github.com/SafeRL-Lab/cheetahclaws/blob/main/docs/R
 ## 🔥🔥🔥 News (Pacific Time)
 
 
+- Apr 07, 2026 (**v3.05.54**): **Video factory major upgrade: custom script mode, PIL subtitle engine, web image search, wizard UX overhaul**
+  - **Custom script mode** — new content mode in `/video` wizard. Choose "Custom script" to paste your own narration text: TTS reads it aloud, and the same text is automatically shown as subtitles (timed proportionally). No AI story generation step, no Whisper required. Ideal for product promos, personal narrations, and multilingual content.
+  - **PIL subtitle rendering engine** — subtitles are now rendered with Pillow (PIL) + NotoSansSC font instead of the libass filter. This fixes non-Latin characters (Chinese, Japanese, Korean, Cyrillic, Arabic) showing as black boxes. The pipeline uses a two-pass approach: fast `-c:v copy` assembly, then PIL-rendered PNG overlays burned in via ffmpeg `filter_complex`. Falls back to no subtitles if PIL fails — never crashes the pipeline.
+  - **Subtitle source selection** — new wizard step to choose subtitle mode: Auto (Whisper transcription), Story text (burn script/story as subtitles — works for all languages, no Whisper needed), Custom text (paste your own), or None.
+  - **Text-to-SRT from plain text** — `text_to_srt()` splits any plain text into natural subtitle chunks (word-wrap for Latin, punctuation+character-wrap for CJK) and distributes timing proportionally across the audio duration. Works for all languages, offline.
+  - **Free web image search** — `/video` now searches for relevant stock photos from Pexels → Wikimedia Commons → Lorem Picsum when no source images or Gemini Web session are available. AI-generated search queries (model-driven) improve relevance. Always produces images — never fails.
+  - **AI-powered source image selection** — when a source folder contains more images than needed, the model reads filenames and story content to select the most relevant ones. Keyword-scoring fallback when the model is unavailable.
+  - **Wizard UX overhaul** — full step-loop wizard with `b`=back, `q`=quit at every step. All options have Auto as default (Enter = Auto). Custom language input (type any language name + Whisper code). Style list shows before prompting. Custom output path step. Detects content language from topic text automatically.
+  - **Audio/video sync fix** — `_audio_duration()` now parses `ffmpeg -i stderr` Duration output for accurate measurement. Previously used a file-size estimate at 128kbps, causing 2.7× overestimate for Edge TTS (which outputs at 48kbps). Videos now always match audio length.
+  - **Source materials** — `--source <dir>` pre-loads images, audio, video, and text files. Images are used directly; audio/video narration replaces TTS; text files are summarised and injected as story context.
+
 - Apr 07, 2026 (**v3.05.53**): **Telegram photo/voice support, process-tree kill on Bash timeout, Windows shell hints, worker fix**
   - **Telegram photo vision** — send a photo to the Telegram bridge and CheetahClaws will describe it using the active vision model (GPT-4o, Gemini 2.0 Flash, Claude, etc.). The bot downloads the highest-resolution version, encodes it as Base64, and routes it through the same `_pending_image` path as `/img`. Caption text (or a default "describe this image" prompt) is forwarded alongside the image.
   - **Telegram voice/audio STT** — send a voice message or audio file to the Telegram bridge and CheetahClaws transcribes it automatically. OGG voice notes are converted to PCM via `ffmpeg` and passed to the local Whisper backend; falls back to the OpenAI Whisper API when `ffmpeg` is unavailable. The transcription is echoed back to the chat before being submitted as a query.
@@ -139,6 +150,7 @@ CheetahClaws: **A Lightweight** and **Easy-to-Use** Python Reimplementation of C
   * [Brainstorm](#brainstorm)
   * [SSJ Developer Mode](#ssj-developer-mode)
   * [Telegram Bridge](#telegram-bridge)
+  * [Video Content Factory](#video-content-factory)
   * [Proactive Background Monitoring](#proactive-background-monitoring)
   * [Checkpoint System](#checkpoint-system)
   * [Plan Mode](#plan-mode)
@@ -324,6 +336,7 @@ Claude Code is a powerful, production-grade AI coding assistant — but its sour
 | SSJ Developer Mode | `/ssj` opens a persistent interactive power menu with 10 shortcuts: Brainstorm, TODO viewer, Worker, Expert Debate, Propose, Review, Readme, Commit, Scan, Promote. Stays open between actions; `/command` passthrough supported. Debate shows animated per-round spinner and saves result next to the debated file. |
 | Worker | `/worker [task#s]` reads `brainstorm_outputs/todo_list.txt`, implements each pending task with a dedicated model prompt, and marks it done (`- [x]`). Supports task selection (`/worker 1,4,6`), custom path (`--path`), and worker count limit (`--workers`). Detects and redirects accidental brainstorm `.md` paths. |
 | Telegram bridge | `/telegram <token> <chat_id>` starts a bot bridge: receive messages from Telegram, run the model, and reply — all from your phone. Typing indicator, slash command passthrough (including interactive menus), and auto-start on launch if configured. |
+| Video factory | `/video [topic]` runs the full AI video pipeline: story generation (active model) → TTS narration (Edge/Gemini/ElevenLabs) → AI images (Gemini Web free or placeholders) → subtitle burn (Whisper) → FFmpeg assembly → final `.mp4`. 10 viral content niches, landscape or short format, zero-cost path available. |
 | Vision input | `/image` (or `/img`) captures the clipboard image and sends it to any vision-capable model — Ollama (`llava`, `gemma4`, `llama3.2-vision`) via native format, or cloud models (GPT-4o, Gemini 2.0 Flash, …) via OpenAI `image_url` multipart format. Requires `pip install cheetahclaws[vision]`; Linux also needs `xclip`. |
 | Proactive monitoring | `/proactive [duration]` starts a background sentinel daemon; agent wakes automatically after inactivity, enabling continuous monitoring loops without user prompts |
 | Force quit | 3× Ctrl+C within 2 seconds triggers `os._exit(1)` — kills the process immediately regardless of blocking I/O |
@@ -842,6 +855,11 @@ Type `/` and press **Tab** to see all commands with descriptions. Continue typin
 | `/telegram` | Start the bridge using previously saved token + chat_id |
 | `/telegram stop` | Stop the Telegram bridge |
 | `/telegram status` | Show whether the bridge is running and the configured chat_id |
+| `/video [topic]` | AI video factory: story → voice → images → subtitles → `.mp4` |
+| `/video status` | Show video pipeline dependency availability |
+| `/video niches` | List all 10 viral content niches |
+| `/video --niche <id> [topic]` | Use a specific content niche |
+| `/video --short [topic]` | Generate vertical short format (9:16) |
 | `/checkpoint` | List all checkpoints (snapshots) for the current session |
 | `/checkpoint <id>` | Rewind to checkpoint — restore files and conversation to that snapshot |
 | `/checkpoint clear` | Delete all checkpoints for the current session |
@@ -1871,6 +1889,29 @@ Phone (Telegram)                  cheetahclaws terminal
 - **Interactive menus over Telegram**: commands with interactive prompts (e.g. `/ollama` model picker, `/permission`, `/checkpoint` restore) now run in a background thread so the poll loop stays free. The menu options are sent as a Telegram message and the next reply you send is used as the selection.
 - **`/stop` or `/off`** sent from Telegram stops the bridge gracefully.
 
+### Photo & Voice support
+
+You can send photos and voice messages directly to the bot — no extra commands needed.
+
+**Photos**
+
+Send any photo (with or without a caption). CheetahClaws downloads the highest-resolution version, encodes it as Base64, and passes it to the active vision model alongside the caption text. If no caption is provided, the default prompt is `"What do you see in this image? Describe it in detail."`.
+
+> **Requirement:** the active model must support vision (e.g. `claude-opus-4-6`, `gpt-4o`, `gemini-2.0-flash`, or any Ollama vision model such as `llava`). Use `/model` to switch if needed.
+
+**Voice messages & audio files**
+
+Send a voice note (OGG) or audio file (MP3). CheetahClaws transcribes it automatically and submits the transcript as your next query. The transcription is echoed back to the chat before the model responds.
+
+> **Requirements:**
+> - **`ffmpeg`** must be installed for audio conversion (`sudo apt install ffmpeg` / `brew install ffmpeg`).
+> - At least one STT backend must be available (tried in order):
+>   1. `faster-whisper` — `pip install faster-whisper` (local, offline, recommended)
+>   2. `openai-whisper` — `pip install openai-whisper` (local, offline)
+>   3. OpenAI Whisper API — set `OPENAI_API_KEY` (cloud fallback, requires internet)
+>
+> If `ffmpeg` is missing, voice messages will fail with `⚠ Could not download voice message.`
+
 ### Commands
 
 | Command | Description |
@@ -1892,6 +1933,192 @@ If both `telegram_token` and `telegram_chat_id` are set in `~/.cheetahclaws/conf
 ╰───────────────────────────────────────────────────╯
 ✓ Telegram bridge started (auto). Bot: @your_bot_name
 ```
+
+---
+
+## Video Content Factory
+
+`/video` is an AI-powered viral video pipeline. Give it a topic — or your own script — and it produces a fully narrated, illustrated, subtitle-burned `.mp4` ready to upload.
+
+```
+[AI mode]     Topic → AI Story → TTS Voice → Images → PIL Subtitles → Final Video
+[Script mode] Your Text → TTS Voice → Images → PIL Subtitles (same text) → Final Video
+```
+
+### Quick start (zero-cost path)
+
+```bash
+# Install free dependencies
+pip install edge-tts Pillow imageio-ffmpeg
+sudo apt install ffmpeg          # or: brew install ffmpeg / conda install ffmpeg
+
+# Launch interactive wizard
+[myproject] ❯ /video
+```
+
+The wizard walks you through every setting with `Enter = Auto` defaults at every step. Type `b` to go back, `q` to quit at any point.
+
+### Wizard walkthrough
+
+```
+╭─ 🎬 Video Content Factory ─────────────────────╮
+│  Enter=Auto on every step  ·  b=back  ·  q=quit │
+╰─────────────────────────────────────────────────╯
+
+[0] Content mode
+  1. Auto         (AI generates story from your topic)
+  2. Custom script (you provide the text — TTS reads it as narration + subtitles)
+
+[1] Topic / idea        ← skip if using custom script
+[2] Source folder       ← optional: images / audio / video / text files
+[3] Language            ← auto-detects from topic; supports custom language entry
+[4] Style / Niche       ← 10 viral niches + auto-viral + custom style
+[5] Format              ← Landscape 16:9 (YouTube) or Short 9:16 (TikTok / Reels)
+[6] Duration            ← 30s · 1 min · 2 min · 3 min · 5 min · custom
+[7] Voice (TTS)         ← auto / Edge (free) / Gemini / ElevenLabs
+[8] Images              ← auto / web-search / gemini-web / placeholder
+[9] Video Quality       ← auto / high / medium / low / minimal
+[10] Subtitles          ← Auto (Whisper) / Story text / Custom text / None
+[11] Output path        ← default: ./video_output/
+```
+
+#### Content mode: Custom script
+
+Select **"2. Custom script"** to provide your own narration text instead of having the AI generate a story:
+
+```
+[0] Content mode
+  Pick mode: 2
+
+  Paste your narration text (type END on a new line when done):
+  CheetahClaws is a lightweight Python AI coding assistant
+  that supports any model — Claude, GPT, Gemini, or local Ollama.
+  END
+  → Script: 18 words
+```
+
+The TTS engine reads the script aloud. The same text is split into timed subtitle entries and burned into the video with PIL. No Whisper, no AI story generation — works fully offline.
+
+Steps skipped in script mode: Topic, Style/Niche, Duration (auto-derived from word count).
+
+### Pipeline steps
+
+| Step | What happens |
+|---|---|
+| **1. Story / Script** | AI generates viral story (AI mode) OR uses your text directly (script mode) |
+| **2. Voice (TTS)** | Edge TTS / Gemini TTS / ElevenLabs narrates the text |
+| **3. Subtitles** | PIL renders subtitles as transparent PNGs; ffmpeg overlays them — works for any language |
+| **4. Images** | Gemini Web (Imagen 3) → web search (Pexels / Wikimedia) → placeholder |
+| **5. Assembly** | zoompan clips + audio → two-pass encode with PIL subtitle burn |
+
+### Subtitle engine
+
+Subtitles are rendered with **Pillow + NotoSansSC font** — not libass. This means:
+
+- Chinese, Japanese, Korean, Cyrillic, Arabic, Thai all render correctly
+- Font is downloaded once to `~/.cheetahclaws/fonts/` on first run (~8 MB)
+- Two-pass approach: fast `-c:v copy` assembly, then PIL PNG overlays via `filter_complex`
+- Falls back to no subtitles if PIL fails — never crashes the pipeline
+
+**Subtitle source options** (wizard step 10):
+
+| Option | How | Best for |
+|---|---|---|
+| Auto | Whisper transcription (`faster-whisper`) | When exact word timing matters |
+| Story text | Same text TTS reads, timed proportionally | All languages; no Whisper needed |
+| Custom text | Paste your own text | Translations, alternate language |
+| None | Skip subtitles | Music videos, no-sub content |
+
+### Image backends
+
+| Engine | How | Cost | Quality |
+|---|---|---|---|
+| `gemini-web` | Playwright + Imagen 3 via Gemini web | **Free** | High |
+| `web-search` | Pexels → Wikimedia Commons → Picsum | **Free** | Medium |
+| `placeholder` | Gradient slides with prompt text | **Free** | N/A |
+| `auto` | gemini-web → web-search → placeholder | — | Best available |
+
+**Gemini Web images (recommended free path):**
+
+One-time login (session is saved):
+
+```bash
+cd ../v-content-creator
+python -c "from gemini_image_gen import verify_login_interactive; verify_login_interactive()"
+```
+
+**Web search images** work out-of-the-box with no login or API key. The model generates optimized search queries from the story/script content. Sources tried in order: Pexels → Wikimedia Commons → Lorem Picsum (always succeeds).
+
+**AI source image selection:** when `--source <dir>` contains more images than needed, the model reads filenames and story content to rank and select the most relevant ones. Keyword-scoring fallback if the model is unavailable.
+
+### TTS backends
+
+| Engine | How | Cost | Quality |
+|---|---|---|---|
+| `gemini` | Gemini TTS API (`GEMINI_API_KEY`) | Free tier | Good |
+| `elevenlabs` | ElevenLabs REST (`ELEVENLABS_API_KEY`) | Paid | Excellent |
+| `edge` | Microsoft Edge TTS (`pip install edge-tts`) | **Free** | Good |
+| `auto` | Try gemini → elevenlabs → edge | — | Best available |
+
+Language-appropriate voices are auto-selected (e.g. `zh-CN-YunxiNeural` for Chinese, `ja-JP-KeitaNeural` for Japanese).
+
+### Content niches (AI mode)
+
+10 built-in viral content niches, weighted toward the most viral:
+
+| Niche ID | Name | Style |
+|---|---|---|
+| `misterio_real` | True Crime | Documentary, investigative |
+| `confesiones` | Dark Confessions | Intimate, vulnerable |
+| `suspenso_cotidiano` | Everyday Suspense | Mundane → disturbing |
+| `ciencia_ficcion` | Sci-Fi / Black Mirror | Near-future, tech noir |
+| `drama_humano` | Human Drama | Emotional, raw |
+| `terror_psicologico` | Psychological Horror | Insidious, ambiguous |
+| `folklore_latam` | Latin American Folklore | Magical realism |
+| `venganza` | Revenge / Poetic Justice | Calculated, satisfying |
+| `supervivencia` | Survival Stories | Adrenaline, extreme |
+| `misterio_digital` | Digital Mystery | Internet creepy, cyber horror |
+
+Story generation uses a 3-tier fallback: structured prompt → simplified structured → free-form, ensuring a story is always produced even with small local models.
+
+### Source materials (`--source`)
+
+Pass `--source <dir>` (or enter path in the wizard) to pre-load your own materials:
+
+| File type | Behaviour |
+|---|---|
+| Images (`.jpg`, `.png`, …) | Used directly instead of AI/web-search images; model selects most relevant |
+| Audio (`.mp3`, `.wav`) | Used as narration, skipping TTS |
+| Video (`.mp4`, `.mov`, …) | Audio track extracted and used as narration; frames extracted as images |
+| Text (`.txt`, `.md`, …) | Read and injected as story context / topic direction |
+
+A single file (e.g. a README or script) can also be passed — it is read and injected as context.
+
+### Output files
+
+```
+video_output/
+├── video_20260407_153000_my_title.mp4        # Final video
+└── video_20260407_153000_my_title_info.json  # Metadata (title, niche, word count, engines)
+
+video_tmp/batch_20260407_153000/story/
+├── story.txt     # Story or script text
+├── audio.mp3     # TTS narration
+├── subs.srt      # Subtitle file (if generated)
+└── images/       # img_00.png … img_07.png
+```
+
+### Requirements summary
+
+| Requirement | Install | Notes |
+|---|---|---|
+| `ffmpeg` | `sudo apt install ffmpeg` or `pip install imageio-ffmpeg` | Required |
+| `Pillow` | `pip install Pillow` | Required for subtitle rendering + images |
+| `edge-tts` | `pip install edge-tts` | Free TTS (recommended) |
+| `faster-whisper` | `pip install faster-whisper` | Auto subtitle transcription (optional) |
+| `playwright` | `pip install playwright && playwright install chromium` | Gemini Web images (optional) |
+| `GEMINI_API_KEY` | env var | Gemini TTS + story generation |
+| `ELEVENLABS_API_KEY` | env var | ElevenLabs TTS (optional) |
 
 ---
 
