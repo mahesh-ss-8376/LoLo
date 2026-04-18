@@ -624,38 +624,14 @@ def repl(config: dict, initial_prompt: str = None):
     if not initial_prompt:
         from providers import detect_provider
 
-        # ── Cheetah startup animation ──
-        _CHEETAH_FRAMES = [
-            "     ✦",
-            "    ✦ ·",
-            "   ✦ · ·",
-            "  ✦ · · ·",
-            " ✦ · · · ·",
-            "✦ · · · · ·",
-        ]
-        _CHEETAH_LOGO = [
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠰⣶⣶⢦⣤⣤⣤⣄⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⣀⣀⣠⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣤⣼⣿⣶⣿⣾⣿⣿⣿⣿⣿⣿⣶⣦⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠙⣿⣿⣟⠛⠛⠛⠛⠛⠛⠛⠛⠛⠻⠿⠛⠛⠛⠛⠉⠉⠉⠙⠛⠛⠛⠿⠿⣿⣿⣿⣷⣦⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⢈⣻⣿⣦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣐⣒⣲⡦⣠⣤⣀⠀⠀⠀⠀⠉⠙⠻⣿⣿⣿⣦⣄⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⢀⣴⣾⣿⣿⠿⠿⠿⠦⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠙⣽⣿⣿⣿⣿⣿⣴⣤⣀⠀⠀⠀⠙⠻⣿⣿⣷⣄⠀⠀⠀⠀",
-            "⠀⠀⣠⣶⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⡀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⣠⣄⣀⡈⠙⠩⠽⢻⣿⣿⣶⣀⠀⠀⠀⠈⢿⣿⣿⡆⠀⠀⠀",
-            "⢀⠼⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠻⣿⣿⣿⣯⡉⠙⠲⠦⣤⣌⣙⣻⣿⣿⣦⣤⣴⣿⣿⣿⡇⠀⠀⠀",
-            "⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⠿⣿⣿⣿⣿⣿⣿⠿⠿⠛⠛⠋⠉⠉⠁⠈⠉⠻⣿⡄⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣤⣶⣶⣶⣶⣶⣶⣦⣬⣀⡀⠀⠉⠛⠻⠯⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢈⣿ ⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⠿⠛⡉⠁⠐⠈⠀⠀⠀⠀⠈⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⣤⣤⣤⣴⣶⣾⣿⣿⣿⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⣿⣿⣿⣿⠯⠐⠀⠈⠀⠀⠀⠀⠀⠀⢀⣀⣤⣤⣤⣤⣀⡀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣿⣿⡿⠃⣿⡇",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⢰⣿⡟⠋⠉⠉⠉⠙⣿⣿⠶⣦⣄⣀⠀⠀⠀⠀⠀⣠⣿⣿⣦⣿⠁",
-            "⠀⠀⠀⠀⠀⠀⠀⠐⠛⠛⠛⠛⠛⠿⠿⣿⣿⣿⣿⣦⡀⠀⠀⠀⢸⣿⠀⠀⠀⠀⠀⢀⠘⠏⠀⠺⣿⡿⠻⣶⣶⣶⡾⠟⠛⢩⣿⡏⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠿⣿⣿⣦⡀⠀⠸⣿⡶⠀⠀⠀⠀⠸⡏⠀⠀⠀⠛⠁⠀⣿⣯⡟⠀⠀⠀⢸⡟⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢻⣿⣿⣄⠀⢿⡇⠀⠀⠀⠀⠀⢷⣀⠀⠀⠀⠀⠀⢸⠏⠀⠀⠀⠀⠈⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣴⢿⣟⢿⣿⡆⠈⣿⣿⠋⠀⠀⠀⡞⣿⡄⠀⠀⣴⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣜⣟⢽⢿⣿⣟⣿⣿⡀⠘⣷⡀⠀⣀⣾⡇⠘⠿⢷⣾⣿⠆⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣰⣺⣿⣽⣿⣿⣿⣹⢿⣻⣿⡇⠀⠈⢿⣾⣿⣿⡷⠾⠟⣿⣿⡟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣽⣻⣫⡼⠛⠉⠁⢸⣿⡇⠀⠀⠀⠛⠉⠀⠀⣠⣾⡿⠏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⠀⢀⣰⣾⣿⣿⣽⠽⠋⠉⠀⠀⠀⠀⠀⠀⢸⣿⡇⠀⠀⠀⢀⣠⣴⣿⠿⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠀⠀⣸⣿⠽⠟⠊⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣷⣶⣶⣿⠿⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-            "⠀⠀⠀⠀⠀⠘⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠼⠿⠛⠛⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+        # ── LoLo startup animation ──
+        _LOLO_LOGO = [
+            "  ██╗      ██████╗  ██╗      ██████╗ ",
+            "  ██║     ██╔═══██╗ ██║     ██╔═══██╗",
+            "  ██║     ██║   ██║ ██║     ██║   ██║",
+            "  ██║     ██║   ██║ ██║     ██║   ██║",
+            "  ███████╗╚██████╔╝ ███████╗╚██████╔╝",
+            "  ╚══════╝ ╚═════╝  ╚══════╝ ╚═════╝ ",
         ]
 
         # Spinning galaxy animation
@@ -663,7 +639,7 @@ def repl(config: dict, initial_prompt: str = None):
         try:
             for i in range(8):
                 frame = _GALAXY_FRAMES[i % 4]
-                sys.stdout.write(f"\r  {clr(frame, 'cyan', 'bold')} Initializing Cheetah...")
+                sys.stdout.write(f"\r  {clr(frame, 'cyan', 'bold')} Initializing LoLo...")
                 sys.stdout.flush()
                 time.sleep(0.12)
             sys.stdout.write(f"\r{' ' * 40}\r")
@@ -672,7 +648,7 @@ def repl(config: dict, initial_prompt: str = None):
             pass
 
         # Print logo
-        for line in _CHEETAH_LOGO:
+        for line in _LOLO_LOGO:
             print(clr(line, "cyan", "bold"))
         print()
 
@@ -683,7 +659,7 @@ def repl(config: dict, initial_prompt: str = None):
         pmode     = clr(config.get("permission_mode", "auto"), "yellow")
         ver_clr   = clr(f"v{VERSION}", "green")
 
-        print(clr("  ╭─ ", "dim") + clr("CheetahClaws ", "cyan", "bold") + ver_clr + clr(" ─────────────────────────────────╮", "dim"))
+        print(clr("  ╭─ ", "dim") + clr("LoLo ", "cyan", "bold") + ver_clr + clr(" ──────────────────────────────────────────╮", "dim"))
         print(clr("  │", "dim") + clr("  Model: ", "dim") + model_clr + " " + prov_clr)
         print(clr("  │", "dim") + clr("  Permissions: ", "dim") + pmode)
         print(clr("  │", "dim") + clr("  /model to switch · /help for commands", "dim"))

@@ -504,8 +504,7 @@ def run_setup_wizard(config: dict) -> None:
     # ── Step 3: Set API key (if needed) ──
     env_var = prov.get("api_key_env", "")
     key_field = f"{chosen_pname}_api_key"
-    existing_key = os.environ.get(env_var, "") or config.get(key_field, "")
-
+    existing_key = (os.environ.get(env_var, "") if env_var else "") or config.get(key_field, "")
     if chosen_pname not in ("ollama", "lmstudio"):
         if existing_key:
             ok(f"API key detected ({existing_key[:4]}...{existing_key[-4:]})")
